@@ -1,92 +1,163 @@
-# PeguePagON | Sistema de Ponto de Venda Autônomo e Offline-First
+# PeguePagON | PDV Autônomo e Offline-First
 
-Sistema comercial completo para autoatendimento e PDV autônomo, projetado para operar com tolerância a falhas de rede em micro e pequenos comércios (mercados de condomínio, padarias e conveniências).
+Sistema de ponto de venda para autoatendimento em pequenos comércios: padarias, mercadinhos de condomínio e conveniências. O cliente escolhe, pesa, paga no terminal e leva, sem atendente e sem depender de internet estável.
 
-A solução une aplicação móvel embarcada em terminais smart, sincronização em nuvem e painel administrativo web para controle de estoque e auditoria financeira.
+Produto da **MicrotecON Sistemas Inteligentes**, em produção desde julho de 2026, processando em média 180 vendas por dia em uma loja real.
 
----
-
-## Dores do Mercado e Soluções Implementadas
-
-### 1. Quedas frequentes de internet travando o atendimento
-* **Dor:** Sistemas tradicionais baseados em navegadores ou APIs síncronas paralisam as vendas quando há oscilação de sinal.
-* **Solução:** Arquitetura Offline-First real. As transações operam com armazenamento local de altíssimo desempenho via Hive. Quando a conectividade é restabelecida, filas de eventos sincronizam automaticamente com o Firestore na nuvem.
-
-### 2. Complexidade de hardware e periféricos externos
-* **Dor:** Necessidade de múltiplos cabos, impressoras fiscais separadas e pinpads lentos.
-* **Solução:** Integração direta com terminais smart Android via Bridge nativa em Kotlin (MethodChannels), controlando a impressora térmica ESC/POS interna e leitores de código de barras no mesmo equipamento.
-
-### 3. Fricção no pagamento
-* **Dor:** Filas no caixa e demora para confirmar recebimentos.
-* **Solução:** Geração dinâmica de QR Code PIX padrão EMV com validação automática de webhook e suporte a pagamentos integrados com split de transação.
-
-### 4. Perda de dados e concorrência de estoque
-* **Dor:** Estoques desincronizados entre o caixa da loja e a retaguarda.
-* **Solução:** Modelo de dados reativo com reconciliação assíncrona, garantindo integridade de saldo mesmo com múltiplos caixas locais.
+> Este repositório é a vitrine técnica do produto. O código-fonte é proprietário e fica em repositório privado.
 
 ---
 
-## Onde Essa Arquitetura se Aplica
+## Sumário
 
-Este projeto resolve gargalos em diversos nichos comerciais:
-* **Micro markets e Honest Markets em condomínios:** Funcionamento 100% autônomo sem atendente.
-* **Food trucks e quiosques itinerantes:** Operações em locais com sinal de celular instável.
-* **Lojas de conveniência e panificação:** Vendas rápidas com emissão instantânea de comprovante.
-* **Controle de eventos e feiras:** Múltiplos pontos de venda móveis sincronizando em tempo real com o backend central.
-
----
-
-## Arquitetura de Software e Padrões
-
-O projeto foi estruturado seguindo princípios de Clean Architecture, Domain-Driven Design (DDD) e alta coesão:
-
-* **Padrão de Apresentação:** MVVM (Model-View-ViewModel) desacoplado da lógica de negócio.
-* **Padrão Repository:** Abstração completa da fonte de dados, permitindo alternar de forma transparente entre o cache local (Hive) e a camada remota (Firebase/REST).
-* **Camada Nativa (Platform Channels):** Código customizado em Kotlin para comunicação com o SDK do fabricante da maquininha (controle de hardware e impressora térmica).
-* **Isolamento de Domínio:** Regras de cálculo de impostos, descontos e validações puramente declarativas, facilitando cobertura de testes automatizados.
+1. [Problemas de negócio resolvidos](#problemas-de-negócio-resolvidos)
+2. [Visão geral da solução](#visão-geral-da-solução)
+3. [Arquitetura](#arquitetura)
+4. [Fluxo de uma venda](#fluxo-de-uma-venda)
+5. [Tecnologias](#tecnologias)
+6. [Decisões de engenharia](#decisões-de-engenharia)
+7. [Demonstração](#demonstração)
+8. [Autor](#autor)
 
 ---
 
-## Tecnologias e Ferramentas
+## Problemas de negócio resolvidos
 
-### Mobile & Aplicação Embarcada
-* **Flutter & Dart:** Interface reativa multiplataforma.
-* **Kotlin (Android Native):** Bridge nativa para comunicação com drivers de hardware.
-* **Hive:** Banco NoSQL local ultrarrápido para persistência offline.
-* **Firebase / Cloud Firestore:** Armazenamento distribuído e listeners de sincronização.
-
-### Hardware & Periféricos
-* **Terminais Android Smart POS:** Execução dedicada no modo Kiosk.
-* **ESC/POS Nativo:** Impressão de cupons não fiscais e comprovantes em bobinas térmicas.
-* **Câmeras / Scanners Integrados:** Leitura rápida de códigos EAN-13.
-
-### Painel Web e Gestão
-* **React, Vite e TypeScript:** Interface web administrativa para cadastro de produtos, gestão de estoque e relatórios financeiros.
-* **Tailwind CSS:** Layout moderno e responsivo.
+| Dor do comércio | Como o PeguePagON resolve |
+|---|---|
+| Internet cai e o caixa para | **Offline-first:** a venda é gravada no banco local (Hive) antes de qualquer chamada de rede. A sincronização com a nuvem acontece em segundo plano e reenvia pendências quando a conexão volta. |
+| Loja sem atendente precisa vender sozinha | **Modo quiosque:** o app roda travado no terminal, com serviço de vigilância (watchdog) que reinicia a aplicação em caso de falha e envia telemetria e alertas. |
+| Pagamento lento ou confirmado "de boca" | **Pagamento integrado:** cartão na maquininha e PIX com QR Code dinâmico, confirmados automaticamente por webhook. Nada é liberado sem confirmação do provedor. |
+| Produtos pesados na balança | **Integração com balança:** leitura da etiqueta impressa pela balança (formato posicional de mercado) direto no leitor de código de barras. |
+| Venda de itens restritos | **Verificação de idade** antes de liberar bebidas alcoólicas. |
+| Dono longe da loja sem visão do caixa | **Painel web** com métricas em tempo real, cadastro de produtos e preços, e **relatório diário automático** por e-mail. |
+| Estoque e preço diferentes entre loja e retaguarda | **Fonte de verdade única** no Firestore para catálogo, com cache local no terminal e merge controlado. |
 
 ---
 
-## Demonstração Visual
+## Visão geral da solução
 
-> *Insira aqui capturas de tela e GIFs da aplicação em execução:*
-
-| Fluxo de Venda | Seleção de Produtos | Pagamento PIX EMV |
-| :---: | :---: | :---: |
-| ![Fluxo](assets/demo-fluxo.png) | ![Produtos](assets/demo-produtos.png) | ![PIX](assets/demo-pix.png) |
+```
+┌────────────────────────────┐        ┌───────────────────────────┐
+│  Terminal Android (loja)   │        │   Painel Web (dono)       │
+│  Flutter + Hive            │        │   React + TypeScript      │
+│  Leitor HID · Balança      │        │   Métricas · Catálogo     │
+│  Impressora ESC/POS        │        │   Operadores · Relatórios │
+└─────────────┬──────────────┘        └─────────────┬─────────────┘
+              │ sync assíncrono                     │
+              ▼                                     ▼
+        ┌──────────────────────────────────────────────────┐
+        │               Firebase (Firestore)               │
+        │  produtos · vendas · operadores · telemetria     │
+        └───────────────┬──────────────────────────────────┘
+                        │
+        ┌───────────────▼───────────────┐      ┌────────────────────┐
+        │  Cloud Functions              │◄─────│ Provedor de        │
+        │  webhook de pagamento         │      │ pagamento (cartão  │
+        │  (HMAC + idempotência)        │      │ e PIX)             │
+        └───────────────────────────────┘      └────────────────────┘
+```
 
 ---
 
-## Status do Código-Fonte
+## Arquitetura
 
-Por se tratar de um produto com aplicação comercial ativa desenvolvido pela **MicrotecON Sistemas Inteligentes**, o repositório principal com as chaves de integração e regras de negócio proprietárias permanece em ambiente privado sob licença fechada. 
+O app do terminal segue **Clean Architecture** com apresentação em **MVVM**, organizado em camadas com dependência sempre apontando para dentro:
 
-Este repositório existe para fins de auditoria de arquitetura, documentação de padrões de engenharia de software e demonstração de capacidades técnicas.
+```
+presentation/   Telas (Views) + ViewModels (ChangeNotifier)
+      │
+      ▼
+domain/         Entidades e regras de negócio puras (carrinho, promoções,
+      │         caixa, sangria, fechamento, verificação de idade)
+      ▼
+data/           Repositórios: Hive (local) e Firestore (remoto)
+      │
+      ▼
+platform/       Integrações nativas: pagamento, impressora, balança
+                (MethodChannel / EventChannel em Kotlin)
+```
+
+**Princípios aplicados**
+
+- **MVVM:** as telas só renderizam estado; toda decisão fica nos ViewModels.
+- **Repository Pattern:** a camada de domínio não sabe se o dado veio do Hive ou do Firestore. Trocar a fonte de dados não mexe em regra de negócio.
+- **Inversão de dependência nas integrações:** pagamento, impressora e balança são interfaces. Cada provedor tem sua implementação, e existe um mock para desenvolvimento e testes. Foi isso que permitiu trocar de provedor de pagamento sem reescrever o fluxo de venda.
+- **Bridge nativa em Kotlin:** comandos pelo `MethodChannel` e status em tempo real pelo `EventChannel`, isolando o SDK do fabricante do restante do app.
+- **Migração de dados sem perda:** adapters do Hive escritos à mão, com fallback de campos, para atualizar o app em produção sem corromper registros antigos.
+
+---
+
+## Fluxo de uma venda
+
+```
+1. Cliente monta o carrinho (toque, código de barras ou etiqueta da balança)
+2. ViewModel valida regras (promoção, restrição de idade, estoque)
+3. Venda gravada no Hive               → status: pendente (nunca se perde)
+4. Cobrança criada no provedor         → cartão no terminal ou QR Code PIX
+5. Webhook confirma o pagamento        → Cloud Function valida HMAC e
+                                          descarta eventos duplicados
+6. Terminal recebe a confirmação       → imprime comprovante ESC/POS
+7. Sincronização com o Firestore       → imediata se online, fila se offline
+```
+
+---
+
+## Tecnologias
+
+**Aplicação do terminal**
+- Flutter e Dart
+- Kotlin (Android nativo) para bridges de hardware
+- Hive (banco NoSQL local)
+- Provider (estado e MVVM)
+- Flutter Secure Storage (credenciais protegidas pelo Android Keystore)
+
+**Backend e nuvem**
+- Firebase: Cloud Firestore, Cloud Functions (Node.js), Hosting
+- Webhook de pagamento com validação HMAC, idempotência e suíte de testes automatizados
+- Relatório diário automático por e-mail
+
+**Painel administrativo**
+- React, Vite, TypeScript e Tailwind CSS
+
+**Hardware e periféricos**
+- Terminal Android smart POS com impressora térmica ESC/POS
+- Leitor de código de barras HID
+- Balança com etiqueta em formato posicional
+- Etiquetas Code128
+
+**Pagamentos**
+- Cartão via maquininha integrada (modo PDV)
+- PIX com QR Code dinâmico
+
+---
+
+## Decisões de engenharia
+
+- **Por que offline-first?** Em loja sem atendente, uma venda perdida por queda de rede é prejuízo direto e sem ninguém para perceber. Gravar local primeiro elimina esse risco.
+- **Por que webhook com idempotência?** Provedores reenviam notificações. Sem idempotência, um pagamento poderia ser contabilizado duas vezes.
+- **Por que watchdog?** Um terminal travado em loja autônoma é loja fechada. O serviço em primeiro plano reinicia o app e manda telemetria, então o problema aparece no painel antes de virar reclamação.
+- **Por que interfaces para hardware?** O mercado de maquininhas muda rápido. O produto já trocou de provedor de pagamento em produção sem tocar no fluxo de venda.
+
+---
+
+## Demonstração
+
+Capturas de tela serão adicionadas na pasta [`assets/`](assets/).
+
+| Venda | Pagamento PIX | Painel web |
+|:---:|:---:|:---:|
+| *em breve* | *em breve* | *em breve* |
+
+---
+
+## Status do código-fonte
+
+O PeguePagON é um produto comercial ativo. O código, as credenciais de integração e as regras de negócio proprietárias ficam em repositório privado. Este repositório documenta a arquitetura e as decisões técnicas do projeto.
 
 ---
 
 ## Autor
 
-Desenvolvido por **Mateus Chagas**  
-Engenheiro de Software | Fundador da MicrotecON Sistemas Inteligentes  
-* LinkedIn: https://www.linkedin.com/in/mateuschagas/  
-* GitHub: https://github.com/xmateuschagas
+**Mateus Chagas**, Engenheiro de Software e fundador da MicrotecON Sistemas Inteligentes
+[LinkedIn](https://www.linkedin.com/in/mateusbchagas) · [GitHub](https://github.com/xmateuschagas)
